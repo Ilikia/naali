@@ -18,6 +18,7 @@ var motion_x = 0;
 var motion_y = 0;
 var motion_z = 0;
 var rotate = 0;
+var rotamount = 0;
 
 // Needed bools for logic
 var isserver = server.IsRunning();
@@ -77,9 +78,12 @@ function ServerInitialize() {
     me.Action("Move").Triggered.connect(ServerHandleMove);
     me.Action("Stop").Triggered.connect(ServerHandleStop);
     me.Action("ToggleFly").Triggered.connect(ServerHandleToggleFly);
-    me.Action("Rotate").Triggered.connect(ServerHandleRotate);
-    me.Action("StopRotate").Triggered.connect(ServerHandleStopRotate);
-    me.Action("MouseLookX").Triggered.connect(ServerHandleMouseLookX);
+    
+    //rotations now on client side, experimentally at least: 
+    //me.Action("Rotate").Triggered.connect(ServerHandleRotate);
+    //me.Action("StopRotate").Triggered.connect(ServerHandleStopRotate);
+    //me.Action("MouseLookX").Triggered.connect(ServerHandleMouseLookX);
+    
     me.Action("Gesture").Triggered.connect(ServerHandleGesture);
 
     rigidbody.PhysicsCollision.connect(ServerHandleCollision);
@@ -88,12 +92,6 @@ function ServerInitialize() {
 function ServerUpdate(frametime) {
     if (!animsDetected) {
         CommonFindAnimations();
-    }
-
-    if (rotate != 0) {
-        var rotateVec = new Vector3df();
-        rotateVec.z = -rotate_speed * rotate * frametime;
-        me.rigidbody.Rotate(rotateVec);
     }
 
     CommonUpdateAnimation(frametime);
@@ -283,13 +281,6 @@ function ServerHandleStopRotate(param) {
     }
 }
 
-function ServerHandleMouseLookX(param) {
-    var move = parseInt(param);
-    var rotateVec = new Vector3df();
-    rotateVec.z = -mouse_rotate_sensitivity * move;
-    me.rigidbody.Rotate(rotateVec);
-}
-
 function ServerHandleGesture(gestureName) {
     var animName = "";
     if (gestureName == "wave") {
@@ -457,6 +448,24 @@ function ClientHandleTripodLookY(param)
 
 function ClientUpdate(frametime)
 {
+    //moved from ServerUpdate to avoid lag
+    /*if (rotate != 0) {
+        var rotateVec = new Vector3df();
+        rotateVec.z = -rotate_speed * rotate * frametime;
+        me.rigidbody.Rotate(rotateVec);
+    }*/
+    
+    if (rotamount != 0) { //mouse rotating
+        var rotateVec = new Vector3df();
+        rotateVec.z = -mouse_rotate_sensitivity * rotamount;
+        //me.rigidbody.Rotate(rotateVec);
+        t = me.placeable.transform;
+        t.rot.z += rotateVec.z;
+        me.placeable.transform = t;
+        rotamount = 0;
+        //debug.Log("oldrot, change, new: " + oldz + ", " + 1 + ", " + me.placeable.transform.rot.z);
+    }
+
     // Tie enabled state of inputmapper to the enabled state of avatar camera
     if (own_avatar) {
         var avatarcameraentity = scene.GetEntityByNameRaw("AvatarCamera");
@@ -518,7 +527,7 @@ function ClientCreateInputMapper() {
     inputContext.GestureUpdated.connect(GestureUpdated);
     inputContext.MouseMove.connect(ClientHandleMouseMove);
 
-    // Local camera matter for mouse scroll
+    // Local camera mapper for mouse scroll
     var inputmapper = me.GetOrCreateComponentRaw("EC_InputMapper", "CameraMapper", 2, false);
     inputmapper.SetNetworkSyncEnabled(false);
     inputmapper.contextPriority = 100;
@@ -764,8 +773,10 @@ function ClientCheckState()
 }
 
 function ClientHandleMouseMove(mouseevent)
-{
+{    
     ClientCheckState();
+
+    debug.Log("ClientHandleMouseMove1");
     
     if (mouseevent.IsItemUnderMouse())
     {
@@ -778,7 +789,9 @@ function ClientHandleMouseMove(mouseevent)
         }
     }
     
-    if (!first_person)
+    debug.Log("ClientHandleMouseMove2");
+    
+/*    if (!first_person)
     {
         //\ note: Right click look also hides/shows cursor, so this is to ensure that the cursor is visible in non-fps mode
         //\       This may be kinda bad if the stack contains more cursors
@@ -787,6 +800,8 @@ function ClientHandleMouseMove(mouseevent)
                 QApplication.restoreOverrideCursor();
         return;
     }
+    
+    debug.Log("ClientHandleMouseMove3");
 
     if (input.IsMouseCursorVisible())
     {
@@ -794,6 +809,9 @@ function ClientHandleMouseMove(mouseevent)
         if (!crosshair.isUsingLabel)
             QApplication.setOverrideCursor(crosshair.cursor);
     }
+    
+    debug.Log("ClientHandleMouseMove4");
+*/
 
     var cameraentity = scene.GetEntityByNameRaw("AvatarCamera");
     if (cameraentity == null)
@@ -803,11 +821,16 @@ function ClientHandleMouseMove(mouseevent)
     if (!cameraentity.ogrecamera.IsActive())
         return;
 
+    debug.Log("ClientHandleMouseMove5");
+
     var cameraplaceable = cameraentity.placeable;
     var cameratransform = cameraplaceable.transform;
 
-    if (mouseevent.relativeX != 0)
-        me.Exec(2, "MouseLookX", String(mouse_rotate_sensitivity*2 * parseInt(mouseevent.relativeX)));
+    if (mouseevent.relativeX != 0) {
+        //me.Exec(2, "MouseLookX", String(mouse_rotate_sensitivity*2 * parseInt(mouseevent.relativeX)));
+        rotamount = mouse_rotate_sensitivity*2 * parseInt(mouseevent.relativeX);
+        debug.Log("rotamount set to: " + rotamount); 
+    }
     if (mouseevent.relativeY != 0)
         cameratransform.rot.x -= (mouse_rotate_sensitivity/3) * parseInt(mouseevent.relativeY);
         
